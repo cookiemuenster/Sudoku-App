@@ -171,6 +171,138 @@ class GameState {
     );
   }
 
+  /// Returns true if the board is completely and validly solved.
+  ///
+  /// A solved board must:
+  /// - contain no zeros
+  /// - have digits 1..9 exactly once in every row
+  /// - have digits 1..9 exactly once in every column
+  /// - have digits 1..9 exactly once in every 3x3 box
+  bool isSolved() {
+    // A solved board cannot contain blanks.
+    if (entries.contains(0)) {
+      return false;
+    }
+
+    // Validate all rows.
+    for (int row = 0; row < 9; row++) {
+      if (!_rowValid(row)) {
+        return false;
+     }
+    }
+
+    // Validate all columns.
+    for (int col = 0; col < 9; col++) {
+      if (!_colValid(col)) {
+        return false;
+      }
+    }
+
+    // Validate all 3x3 boxes.
+    for (int box = 0; box < 9; box++) {
+      if (!_boxValid(box)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Returns true if the specified row contains digits 1..9 exactly once.
+  bool _rowValid(int row) {
+    if (row < 0 || row >= 9) {
+      throw RangeError.range(row, 0, 8, 'row');
+    }
+
+    int seen = 0;
+
+    for (int col = 0; col < 9; col++) {
+      final value = entries[row * 9 + col];
+
+      // Rows in a solved board must not contain zeros.
+      if (value < 1 || value > 9) {
+        return false;
+      }
+
+      final bit = 1 << value;
+
+      // If we've already seen this digit, the row is invalid.
+      if ((seen & bit) != 0) {
+        return false;
+      }
+
+      seen |= bit;
+    }
+
+    return true;
+  }
+
+  /// Returns true if the specified column contains digits 1..9 exactly once.
+  bool _colValid(int col) {
+    if (col < 0 || col >= 9) {
+      throw RangeError.range(col, 0, 9, 'col');
+    }
+
+    int seen = 0;
+
+    for (int row = 0; row< 9; row++) {
+      final value = entries[row * 9 + col];
+
+      if (value < 1 || value > 9) {
+        return false;
+      }
+
+      final bit = 1 << value;
+
+      if ((seen & bit) != 0) {
+        return false;
+      }
+
+      seen |= bit;
+    }
+
+    return true;
+  }
+
+  /// Returns true if the specified 3x3 box contains digits 1..9 exactly once.
+  ///
+  /// Boxes are indexed left-to-right, top-to-bottom:
+  /// 0 1 2
+  /// 3 4 5
+  /// 6 7 8
+  bool _boxValid(int box) {
+    if (box < 0 || box >= 9) {
+      throw RangeError.range(box, 0, 8, 'box');
+    }
+
+    final startRow = (box ~/ 3) * 3;
+    final startCol = (box % 3) * 3;
+
+    int seen = 0;
+
+    for (int rowOffset = 0; rowOffset < 3; rowOffset++) {
+      for (int colOffset = 0; colOffset < 3; colOffset++) {
+        final row = startRow + rowOffset;
+        final col = startCol + colOffset;
+        final value = entries[row * 9 + col];
+
+        if (value < 1 || value > 9) {
+          return false;
+        }
+
+        final bit = 1 << value;
+
+        if ((seen & bit) != 0) {
+          return false;
+        }
+
+        seen |= bit;
+      }
+    }
+
+    return true;
+  }
+
   /// Validates that an index is within the board range 0..80.
   void _validateIndex(int index) {
     if (index < 0 || index >= 81) {
