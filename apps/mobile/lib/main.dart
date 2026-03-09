@@ -57,8 +57,14 @@ class _PlayScreenState extends State<PlayScreen> {
       '000419005'
       '000080079';
   
-  ///INITIALIZING GAME ENGINE STATE
+  
   late GameState _gameState;
+
+  ///ADDING UNDO & REDO STACKS
+  final List<GameState> _undoStack = [];
+  final List<GameState> _redoStack = [];
+
+  ///INITIALIZING GAME ENGINE STATE
   @override
   void initState() {
     super.initState();
@@ -70,27 +76,18 @@ class _PlayScreenState extends State<PlayScreen> {
     _gameState = GameState.fromGivens(givens);
   }
 
+  /// Helper to apply moves/ update state.
+  void _applyNewState(GameState newState) {
+    setState(() {
+      _undoStack.add(_gameState);
+      _redoStack.clear();
+      _gameState = newState;
+    });
+  }
+
   // NOTES FEATURE:
   /// When true, number pad toggles notes instead of placing a digit.
   bool _noteMode = false;
-
-  //USER SELECTS A BOX FEATURE:
-  /// Called when the user taps a cell.
-  void _handleCellTap(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
-  //SETTING THE DIGIT SELECTED BY THE USER:
-  void _placeDigit(int digit) {
-    final idx = _selectedIndex;
-    if (idx == null) return;
-
-    setState(() {
-      _gameState = _gameState.copyWithEntry(idx, digit);
-    });
-  }
 
   // Converts an 81-character puzzle string into a List<int> of length 81.
   List<int> _parsePuzzle(String puzzle) {
@@ -115,17 +112,59 @@ class _PlayScreenState extends State<PlayScreen> {
     return (_gameState.notesMasks[index] & _bitFor(digit)) != 0;
   }
 
+  //USER SELECTS A BOX FEATURE:
+  /// Called when the user taps a cell.
+  void _handleCellTap(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  //SETTING THE DIGIT SELECTED BY THE USER:
+  void _placeDigit(int digit) {
+    final idx = _selectedIndex;
+    if (idx == null) return;
+
+    final newState = _gameState.copyWithEntry(idx, digit);
+
+    if (identical(newState, _gameState)) return;
+
+    _applyNewState(newState);
+  }
+
   /// Toggle (add/remove) a note candidate digit 1..9.
   void _toggleNote(int index, int digit) {
-    setState(() {
-      _gameState = _gameState.copyWithToggledNote(index, digit);
-    });
+    final newState = _gameState.copyWithToggledNote(index, digit);
+
+    if (identical(newState, _gameState)) return;
+    
+    _applyNewState(newState);
   }
 
   /// Clears all notes in the selected cell.
   void _clearNotes(int index) {
+    final newState = _gameState.copyWithClearedNotes(index);
+    
+    if (identical(newState, _gameState)) return;
+    
+    _applyNewState(newState);
+  }
+
+  void _undo() {
+    if (_undoStack.isEmpty) return;
+
     setState(() {
-      _gameState = _gameState.copyWithClearedNotes(index);
+      _redoStack.add(_gameState);
+      _gameState = _undoStack.removeLast();
+    });
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+
+    setState(() {
+      _undoStack.add(_gameState);
+      _gameState = _redoStack.removeLast();
     });
   }
 
@@ -133,66 +172,69 @@ class _PlayScreenState extends State<PlayScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       // Top bar of the screen (title + action buttons).
-      appBar: const _PlayAppBar(),
-
+      appBar: _PlayAppBar(
+        onUndo: _undo,
+        onRedo: _redo,
+      ),
       // SafeArea prevents UI from being hidden by notches / system overlays.
       body: SafeArea(
-        /// Replaced "Center(child: SudokuGrid())" with "Column"
-        /// to add number pad below the sudoku puzzle.
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            /// Board
-            SudokuGrid(
-              selectedIndex: _selectedIndex,
-              givens: _gameState.givens,
-              entries: _gameState.entries,
-              notesMasks: _gameState.notesMasks,
-              onCellTap: _handleCellTap,
-            ),
-            const SizedBox(height: 12),
-            /// Number pad behavior features
-            _NumberPad(
-              /// Note mode toggle behavior
-              noteMode: _noteMode,
-              onToggleNoteMode: () {
-                setState(() {
-                  _noteMode = !_noteMode; /// note mode off by default
-                });
-              },
-              /// Place selected digit behavior
-              onNumber: (n) {
-                final idx = _selectedIndex;
-                if (idx == null) return;
+        child: Center(
+          /// Adding number pad below the sudoku puzzle.
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              /// Board
+              SudokuGrid(
+                selectedIndex: _selectedIndex,
+                givens: _gameState.givens,
+                entries: _gameState.entries,
+                notesMasks: _gameState.notesMasks,
+                onCellTap: _handleCellTap,
+              ),
+              const SizedBox(height: 12),
+              /// Number pad behavior features
+              _NumberPad(
+                /// Note mode toggle behavior
+                noteMode: _noteMode,
+                onToggleNoteMode: () {
+                  setState(() {
+                    _noteMode = !_noteMode; /// note mode off by default
+                  });
+                },
+                /// Place selected digit behavior
+                onNumber: (n) {
+                  final idx = _selectedIndex;
+                  if (idx == null) return;
 
-                /// Ensuring default numbers (givens) can't be changed.
-                if (_gameState.givens[idx] != 0) return;
+                  /// Ensuring default numbers (givens) can't be changed.
+                  if (_gameState.givens[idx] != 0) return;
 
-                if(_noteMode) {
-                  /// Only allow notes on empty cells (common UX).
-                  if (_gameState.entries[idx] != 0) return;
-                  _toggleNote(idx, n);
-                } else {
-                  _placeDigit(n);
-                }
-              },
-              /// Clear selected digit behavior
-              onClear: () {
-                final idx = _selectedIndex;
-                if(idx == null) return;
+                  if(_noteMode) {
+                    /// Only allow notes on empty cells (common UX).
+                    if (_gameState.entries[idx] != 0) return;
+                    _toggleNote(idx, n);
+                  } else {
+                    _placeDigit(n);
+                  }
+                },
+                /// Clear selected digit behavior
+                onClear: () {
+                  final idx = _selectedIndex;
+                  if(idx == null) return;
 
-                /// Checks if the block has a default number
-                if (_gameState.givens[idx] != 0) return;
+                  /// Checks if the block has a default number
+                  if (_gameState.givens[idx] != 0) return;
 
-                if (_noteMode) {
-                  _clearNotes(idx);
-                } else {
-                  _placeDigit(0);
-                }
-              },
-            ),
-          ],
-        ),
+                  if (_noteMode) {
+                    _clearNotes(idx);
+                  } else {
+                    _placeDigit(0);
+                  }
+                },
+              ),
+            ],
+          ),
+        )
       ),
     );
   }
@@ -203,7 +245,13 @@ class _PlayScreenState extends State<PlayScreen> {
 /// Implements PreferredSizeWidget because Scaffold.appBar requires it
 /// (so it knows how tall the app bar should be).
 class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _PlayAppBar();
+  final VoidCallback onUndo;
+  final VoidCallback onRedo;
+
+  const _PlayAppBar({
+    required this.onUndo,
+    required this.onRedo,
+  });
 
   /// Preferred size (height) of this app bar.
   /// kToolbarHeight is the standard Material AppBar height.
@@ -218,14 +266,14 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
         // Undo button placeholder.
         // onPressed is null => button is disabled (greyed out).
         IconButton(
-          tooltip: 'Undo (coming soon)',
-          onPressed: null,
+          tooltip: 'Undo',
+          onPressed: onUndo,
           icon: const Icon(Icons.undo),
         ),
         // Redo button placeholder.
         IconButton(
-          tooltip: 'Redo (coming soon)',
-          onPressed: null,
+          tooltip: 'Redo',
+          onPressed: onRedo,
           icon: const Icon(Icons.redo),
         ),
       ],
