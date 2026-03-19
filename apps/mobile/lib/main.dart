@@ -76,13 +76,21 @@ class _PlayScreenState extends State<PlayScreen> {
     _gameState = GameState.fromGivens(givens);
   }
 
-  /// Helper to apply moves/ update state.
+  /// Helper to apply moves/ check if the state is solved/ update state.
+  /// Shows dialogue if needed.
   void _applyNewState(GameState newState) {
+    final wasSolved = _gameState.isSolved();
+    final isNowSolved = newState.isSolved();
+
     setState(() {
       _undoStack.add(_gameState);
       _redoStack.clear();
       _gameState = newState;
     });
+
+    if (!wasSolved && isNowSolved) {
+      _showsSolvedDialog();
+    }
   }
 
   // NOTES FEATURE:
@@ -166,6 +174,25 @@ class _PlayScreenState extends State<PlayScreen> {
       _undoStack.add(_gameState);
       _gameState = _redoStack.removeLast();
     });
+  }
+
+  // Adding helper to show victory dialogue
+  Future<void> _showsSolvedDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Puzzle Solved'),
+          content: const Text('Nice work. You completed the Sudoku puzzle.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
