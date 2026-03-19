@@ -303,6 +303,24 @@ class GameState {
     return true;
   }
 
+  /// Converts this game state into a JSON-serializable map.
+  Map<String, dynamic> toJson() {
+    return {
+      'givens': givens,
+      'entries': entries,
+      'notesMasks': notesMasks,
+    };
+  }
+
+  /// Reconstructs a GameState from JSON data.
+  factory GameState.fromJson(Map<String, dynamic> json) {
+    return GameState(
+      givens: List<int>.from(json['givens'] as List),
+      entries: List<int>.from(json['entries'] as List),
+      notesMasks: List<int>.from(json['notesMasks'] as List),
+    );
+  }
+
   /// Validates that an index is within the board range 0..80.
   void _validateIndex(int index) {
     if (index < 0 || index >= 81) {

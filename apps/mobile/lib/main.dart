@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sudoku_engine/sudoku_engine.dart';
+import 'data/persistence/game_save_store.dart';
 
 // App entry point.
 // Flutter starts executing here.
@@ -64,6 +65,9 @@ class _PlayScreenState extends State<PlayScreen> {
   final List<GameState> _undoStack = [];
   final List<GameState> _redoStack = [];
 
+  //ADDING GAME SAVE STORE FIELD TO ENABLE GAME SAVE AND RESUME FUNCTIONALITY
+  final GameSaveStore _saveStore = GameSaveStore();
+
   ///INITIALIZING GAME ENGINE STATE
   @override
   void initState() {
@@ -74,10 +78,25 @@ class _PlayScreenState extends State<PlayScreen> {
 
     /// Constructs givens, entries and notesMasks.
     _gameState = GameState.fromGivens(givens);
+
+    //calling `_loadSavedGame` method
+    //if there is a saved game, the game will reload from where the user left off in the game.
+    _loadSavedGame();
   }
 
-  /// Helper to apply moves/ check if the state is solved/ update state.
-  /// Shows dialogue if needed.
+  // Helper to load a previously saved game.
+  Future<void> _loadSavedGame() async {
+    final savedGame = await _saveStore.loadGame();
+
+    if (!mounted || savedGame == null) return;
+
+    setState(() {
+      _gameState = savedGame;
+    });
+  }
+
+  /// Helper to apply moves/ load a saved game/ check if the state is solved/ update state.
+  /// Shows dialogue if the current game is solved.
   void _applyNewState(GameState newState) {
     final wasSolved = _gameState.isSolved();
     final isNowSolved = newState.isSolved();
@@ -87,6 +106,8 @@ class _PlayScreenState extends State<PlayScreen> {
       _redoStack.clear();
       _gameState = newState;
     });
+
+    _saveStore.saveGame(_gameState);
 
     if (!wasSolved && isNowSolved) {
       _showsSolvedDialog();
@@ -164,6 +185,7 @@ class _PlayScreenState extends State<PlayScreen> {
     setState(() {
       _redoStack.add(_gameState);
       _gameState = _undoStack.removeLast();
+      _saveStore.saveGame(_gameState);
     });
   }
 
@@ -173,6 +195,7 @@ class _PlayScreenState extends State<PlayScreen> {
     setState(() {
       _undoStack.add(_gameState);
       _gameState = _redoStack.removeLast();
+      _saveStore.saveGame(_gameState);
     });
   }
 
