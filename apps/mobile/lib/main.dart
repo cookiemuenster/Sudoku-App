@@ -225,6 +225,8 @@ class _PlayScreenState extends State<PlayScreen> {
       appBar: _PlayAppBar(
         onUndo: _undo,
         onRedo: _redo,
+        canUndo: _undoStack.isNotEmpty,
+        canRedo: _redoStack.isNotEmpty,
       ),
       // SafeArea prevents UI from being hidden by notches / system overlays.
       body: SafeArea(
@@ -297,10 +299,14 @@ class _PlayScreenState extends State<PlayScreen> {
 class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onUndo;
   final VoidCallback onRedo;
+  final bool canUndo;
+  final bool canRedo;
 
   const _PlayAppBar({
     required this.onUndo,
     required this.onRedo,
+    required this.canUndo,
+    required this.canRedo,
   });
 
   /// Preferred size (height) of this app bar.
@@ -317,13 +323,13 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
         // onPressed is null => button is disabled (greyed out).
         IconButton(
           tooltip: 'Undo',
-          onPressed: onUndo,
+          onPressed: canUndo ? onUndo : null,
           icon: const Icon(Icons.undo),
         ),
         // Redo button placeholder.
         IconButton(
           tooltip: 'Redo',
-          onPressed: onRedo,
+          onPressed: canRedo ? onRedo : null,
           icon: const Icon(Icons.redo),
         ),
       ],
