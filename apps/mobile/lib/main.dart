@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sudoku_engine/sudoku_engine.dart';
 import 'data/persistence/game_save_store.dart';
+import 'data/puzzles/puzzle_catalog.dart';
 
 // App entry point.
 // Flutter starts executing here.
@@ -39,26 +40,7 @@ class PlayScreen extends StatefulWidget {
 class _PlayScreenState extends State<PlayScreen> {
   // Index (0..80) of the currently selected cell, or null if none selected.
   int? _selectedIndex;
-
-  // Placeholder "entries" for UI highlighting.
-  // - 0 means blank
-  // - 1..9 are digits
-  //
-  // For now we fill it with a repeating pattern so we can test same-number highlighting.
-  // Later this will come from sudoku_engine GameState.
-  // Below is a starter puzzle encoded as 81 digits. 0 means blank.
-  static const String _puzzle =
-      '530070000'
-      '600195000'
-      '098000060'
-      '800060003'
-      '400803001'
-      '700020006'
-      '060000280'
-      '000419005'
-      '000080079';
-  
-  
+  late String _currentPuzzle;
   late GameState _gameState;
 
   ///ADDING UNDO & REDO STACKS
@@ -73,8 +55,11 @@ class _PlayScreenState extends State<PlayScreen> {
   void initState() {
     super.initState();
 
+    /// Points to the first puzzle in the `PuzzleCatalog` class.
+    _currentPuzzle = PuzzleCatalog.puzzles.first;
+
     /// The immutable starting clues of the puzzle (never changes).
-    final givens =  _parsePuzzle(_puzzle);
+    final givens =  _parsePuzzle(_currentPuzzle);
 
     /// Constructs givens, entries and notesMasks.
     _gameState = GameState.fromGivens(givens);
@@ -112,6 +97,31 @@ class _PlayScreenState extends State<PlayScreen> {
     if (!wasSolved && isNowSolved) {
       _showsSolvedDialog();
     }
+  }
+
+  /// START NEW GAME
+  /// Adding a methos o allow the user to start a new game
+  void _startNewGame() {
+    final puzzles = PuzzleCatalog.puzzles;
+
+    // Very simple selection rule for now:
+    // pick a different puzzle if possible.
+    final available = puzzles.where((p) => p != _currentPuzzle).toList();
+    final nextPuzzle = available.isNotEmpty ? available.first : puzzles.first;
+
+    final givens = _parsePuzzle(nextPuzzle);
+    final newState = GameState.fromGivens(givens);
+
+    setState(() {
+      _currentPuzzle = nextPuzzle;
+      _selectedIndex = null;
+      _noteMode = false;
+      _undoStack.clear();
+      _redoStack.clear();
+      _gameState = newState;
+    });
+
+    _saveStore.saveGame(_gameState);
   }
 
   // NOTES FEATURE:
@@ -227,6 +237,7 @@ class _PlayScreenState extends State<PlayScreen> {
         onRedo: _redo,
         canUndo: _undoStack.isNotEmpty,
         canRedo: _redoStack.isNotEmpty,
+        onNewGame: _startNewGame,
       ),
       // SafeArea prevents UI from being hidden by notches / system overlays.
       body: SafeArea(
@@ -299,12 +310,14 @@ class _PlayScreenState extends State<PlayScreen> {
 class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onUndo;
   final VoidCallback onRedo;
+  final VoidCallback onNewGame;
   final bool canUndo;
   final bool canRedo;
 
   const _PlayAppBar({
     required this.onUndo,
     required this.onRedo,
+    required this.onNewGame,
     required this.canUndo,
     required this.canRedo,
   });
@@ -319,18 +332,24 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
     return AppBar(
       title: const Text('Sudoku'),
       actions: [
-        // Undo button placeholder.
+        // Undo button.
         // onPressed is null => button is disabled (greyed out).
         IconButton(
           tooltip: 'Undo',
           onPressed: canUndo ? onUndo : null,
           icon: const Icon(Icons.undo),
         ),
-        // Redo button placeholder.
+        // Redo button.
         IconButton(
           tooltip: 'Redo',
           onPressed: canRedo ? onRedo : null,
           icon: const Icon(Icons.redo),
+        ),
+        // New Game button
+        IconButton(
+          tooltip: 'New Game',
+          onPressed: onNewGame,
+          icon: const Icon(Icons.refresh),
         ),
       ],
     );
