@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sudoku_engine/sudoku_engine.dart';
+import 'package:sudoku_rules/sudoku_rules.dart';
 import 'data/persistence/game_save_store.dart';
 import 'data/puzzles/puzzle_catalog.dart';
 
@@ -435,7 +436,7 @@ class SudokuGrid extends StatelessWidget {
 
                   // Highlight row/col/box if a cell is selected.
                   final bool inSelectedRowColBox = selectedIndex != null
-                      ? _sharesRowColOrBox(index, selectedIndex!) : false;
+                      ? BoardRules.sharesRowColOrBox(index, selectedIndex!) : false;
                   
                   // Highlight same number if a cell is selected AND it has a number.
                   final int selectedValue = selectedIndex != null ? entries[selectedIndex!] : 0;
@@ -443,7 +444,7 @@ class SudokuGrid extends StatelessWidget {
                   final bool isSameNumber = selectedValue != 0 && 
                       entries[index] == selectedValue && selectedIndex != null;
                   
-                  final Set<int> conflictSet = selectedIndex != null ? _conflictsForIndex(
+                  final Set<int> conflictSet = selectedIndex != null ? BoardRules.conflictsForIndex(
                       index: selectedIndex!, entries: entries) : {};
                   
                   final bool isConflict = selectedIndex != null &&
@@ -468,61 +469,6 @@ class SudokuGrid extends StatelessWidget {
         );
       },
     );
-  }
-
-  // Returns true if [a] shares a row, column, or 3x3 box with [b].
-  static bool _sharesRowColOrBox(int a, int b) {
-    final aRow = a ~/ size;
-    final aCol = a % size;
-
-    final bRow = b ~/ size;
-    final bCol = b % size;
-    
-    final sameRow = aRow == bRow;
-    final sameCol = aCol == bCol;
-
-    final aBox = (aRow ~/ 3) * 3 + (aCol ~/ 3);
-    final bBox = (bRow ~/ 3) * 3 + (bCol ~/ 3);
-    final sameBox = aBox == bBox;
-
-    return sameRow || sameCol || sameBox;
-  }
-
-  static Set<int> _conflictsForIndex({
-    required int index,
-    required List<int> entries,
-  }) {
-    final v = entries[index];
-    if (v == 0) return {};
-
-    final row = index ~/ size;
-    final col = index % size;
-    final boxRow = (row ~/ 3) * 3;
-    final boxCol = (col ~/ 3) * 3;
-
-    final conflicts = <int>{};
-
-    // Row conflicts
-    for (int c = 0; c < 9; c++) {
-      final i = row * 9 + c;
-      if (i != index && entries[i] == v) conflicts.add(i);
-    }
-
-    // Column conflicts
-    for (int r = 0; r < 9; r++) {
-      final i = r * 9 + col;
-      if (i != index && entries[i] == v) conflicts.add(i);
-    }
-
-    // Box conflicts
-    for (int r = boxRow; r < boxRow + 3; r++) {
-      for (int c = boxCol; c < boxCol + 3; c++) {
-        final i = r * 9 + c;
-        if (i != index && entries[i] == v) conflicts.add(i);
-      }
-    }
-
-    return conflicts;
   }
 }
 
