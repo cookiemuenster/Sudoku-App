@@ -125,6 +125,25 @@ class _PlayScreenState extends State<PlayScreen> {
     _saveStore.saveGame(_gameState);
   }
 
+  /// RESTART GAME
+  void _resetPuzzle() {
+    // Recreates a fresh board from the same puzzle.
+    // Using _gameState.givens means reset works even after resume,
+    // because it resets the puzzle currently in progress.
+    final resetState = GameState.fromGivens(_gameState.givens);
+
+    setState(() {
+      _selectedIndex = null;
+      _noteMode = false;
+      // Clearing undo/redo avoids carrying old history into the reset board.
+      _undoStack.clear();
+      _redoStack.clear();
+      _gameState = resetState;
+    });
+
+    _saveStore.saveGame(_gameState);
+  }
+
   // NOTES FEATURE:
   /// When true, number pad toggles notes instead of placing a digit.
   bool _noteMode = false;
@@ -229,6 +248,37 @@ class _PlayScreenState extends State<PlayScreen> {
     );
   }
 
+  // Adding helper to show confirmation dialogue before calling _resetPuzzle
+  Future<void> _confirmResetPuzzle() async {
+    // `showDialog<bool>` returns true, false, or null
+    final shouldReset = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Reset Puzzle'),
+          content: const Text(
+            'Clear all progress and restart this puzzle from the beginning',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Reset'),
+            ),
+          ],
+        );
+      },
+    );
+
+    // only `true` triggers the reset
+    if (shouldReset == true) {
+      _resetPuzzle();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -239,6 +289,7 @@ class _PlayScreenState extends State<PlayScreen> {
         canUndo: _undoStack.isNotEmpty,
         canRedo: _redoStack.isNotEmpty,
         onNewGame: _startNewGame,
+        onResetPuzzle: _confirmResetPuzzle,
       ),
       // SafeArea prevents UI from being hidden by notches / system overlays.
       body: SafeArea(
@@ -312,6 +363,7 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onUndo;
   final VoidCallback onRedo;
   final VoidCallback onNewGame;
+  final VoidCallback onResetPuzzle;
   final bool canUndo;
   final bool canRedo;
 
@@ -319,6 +371,7 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onUndo,
     required this.onRedo,
     required this.onNewGame,
+    required this.onResetPuzzle,
     required this.canUndo,
     required this.canRedo,
   });
@@ -352,6 +405,12 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
           onPressed: onNewGame,
           icon: const Icon(Icons.refresh),
         ),
+        // Reset Puzzle
+        IconButton(
+          tooltip: 'Reset Puzzle',
+          onPressed: onResetPuzzle,
+          icon: const Icon(Icons.restart_alt),
+        )
       ],
     );
   }
