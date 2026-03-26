@@ -42,6 +42,7 @@ class _PlayScreenState extends State<PlayScreen> {
   // Index (0..80) of the currently selected cell, or null if none selected.
   int? _selectedIndex;
   late String _currentPuzzle;
+  PuzzleDifficulty _currentDifficulty = PuzzleDifficulty.easy;
   late GameState _gameState;
 
   ///ADDING UNDO & REDO STACKS
@@ -57,7 +58,7 @@ class _PlayScreenState extends State<PlayScreen> {
     super.initState();
 
     /// Points to the first puzzle in the `PuzzleCatalog` class.
-    _currentPuzzle = PuzzleCatalog.puzzles.first;
+    _currentPuzzle = PuzzleCatalog.puzzles[_currentDifficulty]!.first;
 
     /// The immutable starting clues of the puzzle (never changes).
     final givens =  _parsePuzzle(_currentPuzzle);
@@ -102,8 +103,10 @@ class _PlayScreenState extends State<PlayScreen> {
 
   /// START NEW GAME
   /// Adding a methos o allow the user to start a new game
-  void _startNewGame() {
-    final puzzles = PuzzleCatalog.puzzles;
+  void _startNewGame({PuzzleDifficulty? difficulty}) {
+    final selecedDifficulty = difficulty ?? _currentDifficulty;
+
+    final puzzles = PuzzleCatalog.puzzles[selecedDifficulty]!;
 
     // Very simple selection rule for now:
     // pick a different puzzle if possible.
@@ -257,7 +260,7 @@ class _PlayScreenState extends State<PlayScreen> {
         return AlertDialog(
           title: const Text('Reset Puzzle'),
           content: const Text(
-            'Clear all progress and restart this puzzle from the beginning',
+            'Clear all progress and restart this puzzle from the beginning?',
           ),
           actions: [
             TextButton(
@@ -279,6 +282,47 @@ class _PlayScreenState extends State<PlayScreen> {
     }
   }
 
+  // Adding heper to show a confirmation dialog before starting a new game.
+  Future<void> _confirmStartNewGame() async {
+    final selectedDifficulty = await showDialog<PuzzleDifficulty>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('New Game'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _difficultyButton(context, PuzzleDifficulty.easy),
+              _difficultyButton(context, PuzzleDifficulty.medium),
+              _difficultyButton(context, PuzzleDifficulty.hard),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selectedDifficulty != null) {
+      _startNewGame(difficulty: selectedDifficulty);
+    }
+  }
+
+  /// Widget for difficulty buttons
+  Widget _difficultyButton(
+    BuildContext context,
+    PuzzleDifficulty difficulty,
+  ) {
+    final label = switch (difficulty) {
+      PuzzleDifficulty.easy => 'Easy',
+      PuzzleDifficulty.medium => 'Medium',
+      PuzzleDifficulty.hard => 'Hard',
+    };
+
+    return ListTile(
+      title: Text(label),
+      onTap: () => Navigator.of(context).pop(difficulty),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -288,7 +332,7 @@ class _PlayScreenState extends State<PlayScreen> {
         onRedo: _redo,
         canUndo: _undoStack.isNotEmpty,
         canRedo: _redoStack.isNotEmpty,
-        onNewGame: _startNewGame,
+        onNewGame: _confirmStartNewGame,
         onResetPuzzle: _confirmResetPuzzle,
       ),
       // SafeArea prevents UI from being hidden by notches / system overlays.
