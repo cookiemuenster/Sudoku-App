@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:sudoku_engine/sudoku_engine.dart';
 import 'package:sudoku_rules/sudoku_rules.dart';
@@ -52,6 +53,9 @@ class _PlayScreenState extends State<PlayScreen> {
   //ADDING GAME SAVE STORE FIELD TO ENABLE GAME SAVE AND RESUME FUNCTIONALITY
   final GameSaveStore _saveStore = GameSaveStore();
 
+  //ADDING TIMER FIELD
+  Timer? _timer;
+
   ///INITIALIZING GAME ENGINE STATE
   @override
   void initState() {
@@ -69,6 +73,56 @@ class _PlayScreenState extends State<PlayScreen> {
     //calling `_loadSavedGame` method
     //if there is a saved game, the game will reload from where the user left off in the game.
     _loadSavedGame();
+    _startTimer();
+  }
+
+  // Helper methods for Timer
+  //
+  // Starts a new timer that ticks every second.
+  // Cancels any previous timer.
+  void _startTimer() {
+    _timer?.cancel();
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() {
+        _elapsedSeconds++;
+      });
+    });
+  }
+
+  // Stops the timer cleanly.
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  // Resets elapsed time to zero.
+  // Ensures no old timer is still running.
+  void _resetTimer() {
+    _stopTimer();
+
+    setState(() {
+      _elapsedSeconds = 0;
+    });
+  }
+
+  // Stops timer when widget is destroyed.
+  // Prevents rogue timers from continuing after the widget is gone.
+  @override
+  void dispose() {
+    _stopTimer();
+    super.dispose();
+  }
+
+  // Formats the timer to mm:ss ==> 00:00.
+  String _formatElapsedTime() {
+    final minutes = _elapsedSeconds ~/ 60;
+    final seconds = _elapsedSeconds % 60;
+
+    final minutesText = minutes.toString().padLeft(2, '0');
+    final secondsText = seconds.toString().padLeft(2, '0');
+
+    return '$minutesText:$secondsText';
   }
 
   // Helper to load a previously saved game.
@@ -83,7 +137,7 @@ class _PlayScreenState extends State<PlayScreen> {
   }
 
   /// Helper to apply moves/ load a saved game/ check if the state is solved/ update state.
-  /// Shows dialogue if the current game is solved.
+  /// Stops timer and shows dialogue if the current game is solved.
   void _applyNewState(GameState newState) {
     final wasSolved = _gameState.isSolved();
     final isNowSolved = newState.isSolved();
@@ -97,6 +151,7 @@ class _PlayScreenState extends State<PlayScreen> {
     _saveStore.saveGame(_gameState);
 
     if (!wasSolved && isNowSolved) {
+      _stopTimer();
       _showsSolvedDialog();
     }
   }
@@ -104,6 +159,8 @@ class _PlayScreenState extends State<PlayScreen> {
   /// START NEW GAME
   /// Adding a methos o allow the user to start a new game
   void _startNewGame({PuzzleDifficulty? difficulty}) {
+    _stopTimer();
+
     final selecedDifficulty = difficulty ?? _currentDifficulty;
 
     final puzzles = PuzzleCatalog.puzzles[selecedDifficulty]!;
@@ -119,6 +176,7 @@ class _PlayScreenState extends State<PlayScreen> {
     setState(() {
       _currentPuzzle = nextPuzzle;
       _selectedIndex = null;
+      _elapsedSeconds = 0;
       _noteMode = false;
       _undoStack.clear();
       _redoStack.clear();
@@ -126,10 +184,14 @@ class _PlayScreenState extends State<PlayScreen> {
     });
 
     _saveStore.saveGame(_gameState);
+    _startTimer();
   }
 
   /// RESTART GAME
   void _resetPuzzle() {
+    // Calling stop timer method.
+    _stopTimer();
+
     // Recreates a fresh board from the same puzzle.
     // Using _gameState.givens means reset works even after resume,
     // because it resets the puzzle currently in progress.
@@ -137,6 +199,7 @@ class _PlayScreenState extends State<PlayScreen> {
 
     setState(() {
       _selectedIndex = null;
+      _elapsedSeconds = 0;
       _noteMode = false;
       // Clearing undo/redo avoids carrying old history into the reset board.
       _undoStack.clear();
@@ -145,6 +208,7 @@ class _PlayScreenState extends State<PlayScreen> {
     });
 
     _saveStore.saveGame(_gameState);
+    _startTimer();
   }
 
   // NOTES FEATURE:
@@ -328,6 +392,7 @@ class _PlayScreenState extends State<PlayScreen> {
     return Scaffold(
       // Top bar of the screen (title + action buttons).
       appBar: _PlayAppBar(
+        elapsedTimeText: _formatElapsedTime(),
         onUndo: _undo,
         onRedo: _redo,
         canUndo: _undoStack.isNotEmpty,
@@ -404,6 +469,7 @@ class _PlayScreenState extends State<PlayScreen> {
 /// Implements PreferredSizeWidget because Scaffold.appBar requires it
 /// (so it knows how tall the app bar should be).
 class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String elapsedTimeText;
   final VoidCallback onUndo;
   final VoidCallback onRedo;
   final VoidCallback onNewGame;
@@ -412,6 +478,7 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool canRedo;
 
   const _PlayAppBar({
+    required this.elapsedTimeText,
     required this.onUndo,
     required this.onRedo,
     required this.onNewGame,
@@ -428,7 +495,17 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      title: const Text('Sudoku'),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Sudoku'),
+          const SizedBox(width: 12),
+          Text(
+            elapsedTimeText,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ],
+      ),
       actions: [
         // Undo button.
         // onPressed is null => button is disabled (greyed out).
