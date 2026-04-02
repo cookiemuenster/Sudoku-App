@@ -53,9 +53,21 @@ class _PlayScreenState extends State<PlayScreen> {
   //ADDING GAME SAVE STORE FIELD TO ENABLE GAME SAVE AND RESUME FUNCTIONALITY
   final GameSaveStore _saveStore = GameSaveStore();
 
+  // --------------------------------------------------------------------
   //ADDING TIMER FIELD
   Timer? _timer;
 
+  /// Total confirmed play time from completed timing segments.
+  int _accumulatedSeconds = 0;
+  /// Start ime of the current active timing segment.
+  /// Null when the timer is not currently running.
+  DateTime? _timerStartedAt;
+  /// True when the timer is actively running.
+  bool _isTimerRunning = false;
+  /// True when the user has manually paused the game.
+  bool _isGamePaused = false;
+  // -----------------------------------------------------------------------
+  
   ///INITIALIZING GAME ENGINE STATE
   @override
   void initState() {
@@ -79,21 +91,43 @@ class _PlayScreenState extends State<PlayScreen> {
   // Helper methods for Timer
   //
   // Starts a new timer that ticks every second.
+  // Timer only starts if there's not a timer running already.
   // Cancels any previous timer.
   void _startTimer() {
-    _timer?.cancel();
+    if (_isTimerRunning) return;
 
+    _timerStartedAt = DateTime.now();
+    _isTimerRunning = true;
+
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {
-        _elapsedSeconds++;
-      });
+      if (!mounted) return;
+      // Rebuilding once per second so the elapsed time can be recompted frm timestamps.
+      setState(() {});
     });
   }
 
-  // Stops the timer cleanly.
+  // Pauses the timer.
+  void _pausedTimer() {
+    if (!_isTimerRunning || _timerStartedAt == null) return;
+
+    final now = DateTime.now();
+    final segmentSeconds = now.difference(_timerStartedAt!).inSeconds;
+
+    _accumulatedSeconds += segmentSeconds;
+    _timerStartedAt = null;
+    _isTimerRunning = false;
+
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  // Stops the timer.
   void _stopTimer() {
     _timer?.cancel();
     _timer = null;
+    _timerStartedAt = null;
+    _isTimerRunning = false;
   }
 
   // Resets elapsed time to zero.
@@ -101,28 +135,43 @@ class _PlayScreenState extends State<PlayScreen> {
   void _resetTimer() {
     _stopTimer();
 
-    setState(() {
-      _elapsedSeconds = 0;
-    });
+    _accumulatedSeconds = 0;
+    _isGamePaused = false;
   }
 
-  // Stops timer when widget is destroyed.
-  // Prevents rogue timers from continuing after the widget is gone.
-  @override
-  void dispose() {
-    _stopTimer();
-    super.dispose();
+  // Computes total elapsed time.
+  int _currentElapsedSeconds() {
+    if (_isTimerRunning && _timerStartedAt != null) {
+      final runningSeconds = DateTime.now().difference(_timerStartedAt!).inSeconds;
+      return _accumulatedSeconds + runningSeconds;
+    }
+
+    return _accumulatedSeconds;
   }
 
   // Formats the timer to mm:ss ==> 00:00.
   String _formatElapsedTime() {
-    final minutes = _elapsedSeconds ~/ 60;
-    final seconds = _elapsedSeconds % 60;
+    final totalSeconds = _currentElapsedSeconds();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
 
     final minutesText = minutes.toString().padLeft(2, '0');
     final secondsText = seconds.toString().padLeft(2, '0');
 
     return '$minutesText:$secondsText';
+  }
+
+  // Manual pause and resume toggle
+  void _togglePausedGame() {
+    setState(() {
+      if (_isGamePaused) {
+        _isGamePaused = false;
+        _startTimer();
+      } else {
+        _isGamePaused = true;
+        _pausedTimer();
+      }
+    });
   }
 
   // Helper to load a previously saved game.
@@ -176,7 +225,8 @@ class _PlayScreenState extends State<PlayScreen> {
     setState(() {
       _currentPuzzle = nextPuzzle;
       _selectedIndex = null;
-      _elapsedSeconds = 0;
+      _accumulatedSeconds = 0;
+      _isGamePaused = false;
       _noteMode = false;
       _undoStack.clear();
       _redoStack.clear();
@@ -199,7 +249,8 @@ class _PlayScreenState extends State<PlayScreen> {
 
     setState(() {
       _selectedIndex = null;
-      _elapsedSeconds = 0;
+      _accumulatedSeconds = 0;
+      _isGamePaused = false;
       _noteMode = false;
       // Clearing undo/redo avoids carrying old history into the reset board.
       _undoStack.clear();
@@ -399,6 +450,8 @@ class _PlayScreenState extends State<PlayScreen> {
         canRedo: _redoStack.isNotEmpty,
         onNewGame: _confirmStartNewGame,
         onResetPuzzle: _confirmResetPuzzle,
+        onTogglePause: _togglePausedGame,
+        isGamePaused: _isGamePaused,
       ),
       // SafeArea prevents UI from being hidden by notches / system overlays.
       body: SafeArea(
@@ -427,6 +480,9 @@ class _PlayScreenState extends State<PlayScreen> {
                 },
                 /// Place selected digit behavior
                 onNumber: (n) {
+                  /// Disabling number pad input when the game is paused.
+                  if (_isGamePaused) return;
+
                   final idx = _selectedIndex;
                   if (idx == null) return;
 
@@ -443,6 +499,9 @@ class _PlayScreenState extends State<PlayScreen> {
                 },
                 /// Clear selected digit behavior
                 onClear: () {
+                  // Disabling number pad input when the game is paused.
+                  if (_isGamePaused) return;
+
                   final idx = _selectedIndex;
                   if(idx == null) return;
 
@@ -474,8 +533,10 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onRedo;
   final VoidCallback onNewGame;
   final VoidCallback onResetPuzzle;
+  final VoidCallback onTogglePause;
   final bool canUndo;
   final bool canRedo;
+  final bool isGamePaused;
 
   const _PlayAppBar({
     required this.elapsedTimeText,
@@ -483,8 +544,10 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onRedo,
     required this.onNewGame,
     required this.onResetPuzzle,
+    required this.onTogglePause,
     required this.canUndo,
     required this.canRedo,
+    required this.isGamePaused,
   });
 
   /// Preferred size (height) of this app bar.
@@ -531,7 +594,15 @@ class _PlayAppBar extends StatelessWidget implements PreferredSizeWidget {
           tooltip: 'Reset Puzzle',
           onPressed: onResetPuzzle,
           icon: const Icon(Icons.restart_alt),
-        )
+        ),
+        // Pause/Resume toggle button
+        IconButton(
+          tooltip: isGamePaused ? 'Resume Game' : 'Pause Game',
+          onPressed: onTogglePause,
+          icon: Icon(
+            isGamePaused ? Icons.play_arrow : Icons.pause,
+          ),
+        ),
       ],
     );
   }
